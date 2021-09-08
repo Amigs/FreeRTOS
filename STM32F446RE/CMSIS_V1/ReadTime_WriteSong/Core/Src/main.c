@@ -23,7 +23,12 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stdio.h"
+#include "string.h"
+#include "df_player.h"
+#include "fonts.h"
+#include "ssd1306.h"
+#include "DS3231.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,23 +46,32 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+
+UART_HandleTypeDef huart4;
 UART_HandleTypeDef huart2;
 
 osThreadId readTimeHandle;
 osThreadId songTaskHandle;
+osThreadId counterHandle;
 /* USER CODE BEGIN PV */
+osThreadId writeOLEDHandle;
 
+uint16_t counter = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_UART4_Init(void);
+static void MX_I2C1_Init(void);
 void StartReadTime(void const * argument);
 void StartSongTask(void const * argument);
+void Startcounter(void const * argument);
 
 /* USER CODE BEGIN PFP */
-
+void StartWriteOLED(void const * argument);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -94,8 +108,22 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART2_UART_Init();
+  MX_UART4_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-
+  if (ssd1306_Init(&hi2c1) != 0) {
+    Error_Handler();
+  }
+  ssd1306_Fill(Black);
+  ssd1306_UpdateScreen(&hi2c1);
+  push.seconds = 0 ;
+  push.minutes = 25;
+  push.hour = 17;
+  push.day = 3;
+  push.numWeek = 8;
+  push.numMonth = 9;
+  push.year = 21;
+  pushTime(&push);
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -123,8 +151,14 @@ int main(void)
   osThreadDef(songTask, StartSongTask, osPriorityIdle, 0, 128);
   songTaskHandle = osThreadCreate(osThread(songTask), NULL);
 
+  /* definition and creation of counter */
+  osThreadDef(counter, Startcounter, osPriorityIdle, 0, 128);
+  counterHandle = osThreadCreate(osThread(counter), NULL);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
+  osThreadDef(writeOLED, StartWriteOLED, osPriorityHigh, 0, 128);
+  writeOLEDHandle = osThreadCreate(osThread(writeOLED), NULL);
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
@@ -194,6 +228,73 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief UART4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_UART4_Init(void)
+{
+
+  /* USER CODE BEGIN UART4_Init 0 */
+
+  /* USER CODE END UART4_Init 0 */
+
+  /* USER CODE BEGIN UART4_Init 1 */
+
+  /* USER CODE END UART4_Init 1 */
+  huart4.Instance = UART4;
+  huart4.Init.BaudRate = 9600;
+  huart4.Init.WordLength = UART_WORDLENGTH_8B;
+  huart4.Init.StopBits = UART_STOPBITS_1;
+  huart4.Init.Parity = UART_PARITY_NONE;
+  huart4.Init.Mode = UART_MODE_TX_RX;
+  huart4.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart4.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN UART4_Init 2 */
+
+  /* USER CODE END UART4_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -239,6 +340,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
@@ -259,7 +361,23 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void StartWriteOLED(void const * argument)
+{
+	char str[15];
+	for(;;){
+		pullTime();
+		/*ssd1306_SetCursor(5, 0);
+		ssd1306_WriteString("COUNTER", Font_11x18, White);*/
+		ssd1306_SetCursor(15, 36);
+		sprintf(str,"%d",counter);
+		ssd1306_WriteString(str, Font_11x18, White);
+		ssd1306_SetCursor(20, 5);
+		sprintf(str,"%02d:%02d:%02d:",pull.hour,pull.minutes,pull.seconds);
+		ssd1306_WriteString(str, Font_11x18, White);
+		ssd1306_UpdateScreen(&hi2c1);
+		osDelay(500);
+	}
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartReadTime */
@@ -293,9 +411,29 @@ void StartSongTask(void const * argument)
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+	HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+    osDelay(1000);
   }
   /* USER CODE END StartSongTask */
+}
+
+/* USER CODE BEGIN Header_Startcounter */
+/**
+* @brief Function implementing the counter thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_Startcounter */
+void Startcounter(void const * argument)
+{
+  /* USER CODE BEGIN Startcounter */
+  /* Infinite loop */
+  for(;;)
+  {
+	counter++;
+    osDelay(500);
+  }
+  /* USER CODE END Startcounter */
 }
 
  /**

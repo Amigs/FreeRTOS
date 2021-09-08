@@ -1,0 +1,6 @@
+df_player.c:17:6:df_sendCMD	24	static
+df_player.c:34:6:df_initPlayer	8	static
+df_player.c:39:6:df_setVolume	16	static
+df_player.c:43:6:df_next	8	static
+df_player.c:48:6:df_previous	8	static
+df_player.c:53:6:df_pause	8	static

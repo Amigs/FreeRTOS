@@ -1,0 +1,4 @@
+DS3231.c:10:6:pushTime	40	static
+DS3231.c:22:6:pullTime	32	static
+DS3231.c:33:9:decToBcd	16	static
+DS3231.c:36:5:bcdToDec	16	static
